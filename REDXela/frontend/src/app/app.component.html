@@ -1,0 +1,670 @@
+<div class="shell" *ngIf="state as s; else loadingTemplate">
+  <aside class="sidebar" [class.open]="menuOpen">
+    <div class="brand">
+      <div class="brand-mark">RX</div>
+      <div>
+        <strong>REDXela</strong>
+        <span>Control operativo</span>
+      </div>
+    </div>
+
+    <nav class="nav-list">
+      <button
+        type="button"
+        *ngFor="let item of navigation"
+        [class.active]="tab === item[0]"
+        (click)="setTab(item[0])">
+        <span class="nav-dot"></span>
+        <span>{{ item[1] }}</span>
+      </button>
+    </nav>
+
+    <div class="sidebar-info">
+      <span>Carnet</span>
+      <strong>201930761</strong>
+      <span>Sistemas Operativos 2</span>
+    </div>
+  </aside>
+
+  <div class="workspace">
+    <header class="topbar">
+      <div class="topbar-left">
+        <button type="button" class="menu-button" (click)="menuOpen = !menuOpen">Menu</button>
+        <div>
+          <span class="eyebrow">Centro de distribucion</span>
+          <h1>{{ tabTitle }}</h1>
+        </div>
+      </div>
+      <div class="topbar-status">
+        <div class="status-pill" [class.warning]="connection !== 'EN_LINEA'">
+          <span class="status-light"></span>
+          {{ connection === 'EN_LINEA' ? 'Tiempo real activo' : readable(connection) }}
+        </div>
+        <div class="status-meta">
+          <span>Politica</span>
+          <strong>{{ readable(s.policy) }}</strong>
+        </div>
+        <div class="status-meta">
+          <span>Reloj</span>
+          <strong>x{{ s.clockRate }}</strong>
+        </div>
+      </div>
+    </header>
+
+    <div class="alerts">
+      <div class="alert danger" *ngIf="s.persistenceError">{{ s.persistenceError }}</div>
+      <div class="alert danger" *ngIf="error">{{ error }}</div>
+      <div class="alert success" *ngIf="notice">{{ notice }}</div>
+    </div>
+
+    <main class="content">
+      <section class="view" *ngIf="tab === 'dashboard'">
+        <div class="hero-card">
+          <div>
+            <span class="eyebrow light">Simulacion concurrente</span>
+            <h2>Centro de Control REDXela</h2>
+            <p>Monitoreo de pedidos, recursos compartidos, inventario, almacenamiento y conflictos en tiempo real.</p>
+          </div>
+          <div class="hero-side">
+            <span>{{ s.automatic ? 'GENERADOR ACTIVO' : 'GENERADOR DETENIDO' }}</span>
+            <button type="button" class="button light" [disabled]="blocked" (click)="toggleGenerator()">
+              {{ s.automatic ? 'Detener generador' : 'Iniciar generador' }}
+            </button>
+          </div>
+        </div>
+
+        <div class="metric-grid">
+          <article class="metric-card">
+            <span>Completados</span>
+            <strong>{{ s.completed }}</strong>
+            <small>{{ s.total }} pedidos registrados</small>
+          </article>
+          <article class="metric-card">
+            <span>En proceso</span>
+            <strong>{{ s.activeCount }}</strong>
+            <small>Procesamiento concurrente</small>
+          </article>
+          <article class="metric-card">
+            <span>En espera</span>
+            <strong>{{ s.waitingCount }}</strong>
+            <small>Stock, recursos o conflicto</small>
+          </article>
+          <article class="metric-card">
+            <span>Espera promedio</span>
+            <strong>{{ seconds(s.averageWaitMs) }}</strong>
+            <small>Pedidos completados</small>
+          </article>
+          <article class="metric-card">
+            <span>Proceso promedio</span>
+            <strong>{{ seconds(s.averageProcessMs) }}</strong>
+            <small>Tiempo real de trabajo</small>
+          </article>
+          <article class="metric-card">
+            <span>Almacen ocupado</span>
+            <strong>{{ percent(warehousePercent) }}</strong>
+            <small>{{ s.warehouse.occupied }} / {{ s.warehouse.capacity }} unidades</small>
+          </article>
+        </div>
+
+        <div class="dashboard-grid">
+          <section class="panel wide">
+            <div class="panel-head">
+              <div>
+                <span class="eyebrow">Recursos compartidos</span>
+                <h3>Ocupacion operativa</h3>
+              </div>
+              <strong>{{ percent(overallOccupancy) }}</strong>
+            </div>
+            <div class="resource-summary">
+              <div *ngFor="let resource of s.resources; trackBy: trackByKey">
+                <div class="row-between">
+                  <span>{{ resource.name }}</span>
+                  <strong>{{ resourceUsage(resource) }}</strong>
+                </div>
+                <div class="bar"><span [style.width.%]="resource.occupancyPercent"></span></div>
+                <small>{{ percent(resource.occupancyPercent) }} de ocupacion acumulada</small>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <span class="eyebrow">Estado de cola</span>
+                <h3>Planificacion</h3>
+              </div>
+              <span class="badge primary">{{ readable(s.policy) }}</span>
+            </div>
+            <div class="stack-list">
+              <div class="stack-row">
+                <span>Pedidos esperando</span>
+                <strong>{{ s.waiting.length }}</strong>
+              </div>
+              <div class="stack-row">
+                <span>Intervalo de aging</span>
+                <strong>{{ s.agingSeconds }} s</strong>
+              </div>
+              <div class="stack-row">
+                <span>Canal recepcion</span>
+                <strong>{{ s.channel.queued }} / {{ s.channel.capacity }}</strong>
+              </div>
+              <div class="stack-row">
+                <span>Backlog durable</span>
+                <strong>{{ s.channel.durableBacklog }}</strong>
+              </div>
+              <div class="stack-row danger-text" *ngIf="s.conflict.state === 'INTERBLOQUEO'">
+                <span>Interbloqueo</span>
+                <strong>DETECTADO</strong>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <span class="eyebrow">Actividad reciente</span>
+              <h3>Ultimos pedidos</h3>
+            </div>
+            <button type="button" class="button ghost" (click)="setTab('pedidos')">Ver todos</button>
+          </div>
+          <div class="activity-grid" *ngIf="recentActivity.length; else noActivity">
+            <article class="activity-card" *ngFor="let order of recentActivity; trackBy: trackById">
+              <div class="row-between">
+                <strong>Pedido #{{ order.id }}</strong>
+                <span class="badge" [class.level-one]="order.level === 1">{{ serviceName(order.level) }}</span>
+              </div>
+              <span>{{ order.clientName }}</span>
+              <small>{{ readable(order.stage) }} · {{ readable(order.state) }}</small>
+              <div class="bar order"><span [style.width.%]="order.progress"></span></div>
+              <div class="row-between compact">
+                <small>{{ order.progress }}%</small>
+                <small>{{ seconds(order.remainingMs) }}</small>
+              </div>
+            </article>
+          </div>
+          <ng-template #noActivity><p class="empty-state">Aun no existen pedidos en la corrida.</p></ng-template>
+        </section>
+      </section>
+
+      <section class="view" *ngIf="tab === 'pedidos'">
+        <div class="two-column">
+          <section class="panel form-panel">
+            <div class="panel-head">
+              <div>
+                <span class="eyebrow">Ingreso manual</span>
+                <h3>Registrar pedido</h3>
+              </div>
+              <span class="badge">Hasta 10 lineas</span>
+            </div>
+            <label class="field">
+              <span>Cliente</span>
+              <select [(ngModel)]="selectedClientId" name="orderClient">
+                <option [ngValue]="0" *ngIf="!s.clients.length">Registra un cliente primero</option>
+                <option *ngFor="let client of s.clients; trackBy: trackById" [ngValue]="client.id">
+                  {{ client.name }} · {{ serviceName(client.level) }}
+                </option>
+              </select>
+            </label>
+            <div class="service-banner" *ngIf="selectedClient as client">
+              <span>Servicio contratado</span>
+              <strong>Nivel {{ client.level }} · {{ serviceName(client.level) }}</strong>
+            </div>
+            <div class="line-editor" *ngFor="let line of lines; let index = index">
+              <label class="field grow">
+                <span>Producto</span>
+                <select [(ngModel)]="line.productId" [name]="'product' + index">
+                  <option *ngFor="let product of s.products; trackBy: trackByProduct" [ngValue]="product.id">
+                    {{ product.name }} · {{ product.type }}
+                  </option>
+                </select>
+              </label>
+              <label class="field units-field">
+                <span>Unidades</span>
+                <input type="number" min="1" max="600" [(ngModel)]="line.units" [name]="'units' + index">
+              </label>
+              <button type="button" class="icon-button" [disabled]="lines.length === 1" (click)="removeLine(index)">Quitar</button>
+            </div>
+            <div class="button-row">
+              <button type="button" class="button secondary" [disabled]="lines.length >= 10" (click)="addLine()">Agregar producto</button>
+              <button type="button" class="button primary" [disabled]="blocked || !selectedClientId" (click)="createOrder()">Registrar pedido</button>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <span class="eyebrow">Automatizacion</span>
+                <h3>Generador continuo</h3>
+              </div>
+              <span class="status-mini" [class.on]="s.automatic">{{ s.automatic ? 'ACTIVO' : 'DETENIDO' }}</span>
+            </div>
+            <p>Genera pedidos de clientes registrados de manera continua para demostrar la competencia por recursos.</p>
+            <button type="button" class="button primary full" [disabled]="blocked || (!s.clients.length && !s.automatic)" (click)="toggleGenerator()">
+              {{ s.automatic ? 'Detener generador' : 'Iniciar generador' }}
+            </button>
+            <div class="separator"></div>
+            <div class="stack-list">
+              <div class="stack-row"><span>Total</span><strong>{{ s.total }}</strong></div>
+              <div class="stack-row"><span>Procesando</span><strong>{{ s.activeCount }}</strong></div>
+              <div class="stack-row"><span>Esperando</span><strong>{{ s.waitingCount }}</strong></div>
+              <div class="stack-row"><span>Completados</span><strong>{{ s.completed }}</strong></div>
+            </div>
+          </section>
+        </div>
+
+        <section class="panel">
+          <div class="panel-head">
+            <div><span class="eyebrow">Tiempo real</span><h3>Pedidos en procesamiento</h3></div>
+            <span class="counter">{{ s.active.length }}</span>
+          </div>
+          <div class="table-wrap" *ngIf="s.active.length; else noActiveOrders">
+            <table>
+              <thead><tr><th>Pedido</th><th>Cliente</th><th>Servicio</th><th>Etapa</th><th>Progreso</th><th>Restante</th><th>Recursos</th></tr></thead>
+              <tbody>
+                <tr *ngFor="let order of s.active; trackBy: trackById">
+                  <td><strong>#{{ order.id }}</strong><small>{{ order.units }} unidades</small></td>
+                  <td>{{ order.clientName }}<small>{{ order.lines.length }} producto(s)</small></td>
+                  <td><span class="badge">{{ serviceName(order.level) }}</span></td>
+                  <td>{{ readable(order.stage) }}</td>
+                  <td><div class="progress-cell"><div class="bar order"><span [style.width.%]="order.progress"></span></div><small>{{ order.progress }}%</small></div></td>
+                  <td>{{ seconds(order.remainingMs) }}</td>
+                  <td>{{ order.heldResources.length ? order.heldResources.join(', ') : 'Sin asignacion' }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <ng-template #noActiveOrders><p class="empty-state">No hay pedidos procesandose en este momento.</p></ng-template>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <div><span class="eyebrow">Cola ordenada</span><h3>Lista de espera</h3></div>
+            <span class="badge primary">Criterio: {{ readable(s.policy) }}</span>
+          </div>
+          <div class="table-wrap" *ngIf="s.waiting.length; else noWaitingOrders">
+            <table>
+              <thead><tr><th>Orden</th><th>Pedido</th><th>Servicio</th><th>Espera</th><th>Prioridad efectiva</th><th>Unidades</th><th>Motivo</th></tr></thead>
+              <tbody>
+                <tr *ngFor="let order of s.waiting; let position = index; trackBy: trackById">
+                  <td><span class="queue-position">{{ position + 1 }}</span></td>
+                  <td><strong>#{{ order.id }}</strong><small>{{ order.clientName }}</small></td>
+                  <td>{{ serviceName(order.level) }}</td>
+                  <td>{{ seconds(order.waitMs) }}</td>
+                  <td>Nivel {{ order.effectiveLevel }}<small *ngIf="order.agingPromotions">{{ order.agingPromotions }} ascenso(s)</small></td>
+                  <td>{{ order.units }}</td>
+                  <td>{{ order.reason }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <ng-template #noWaitingOrders><p class="empty-state">La cola de espera esta vacia.</p></ng-template>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head"><div><span class="eyebrow">Historial</span><h3>Pedidos finalizados</h3></div><span class="counter">{{ s.history.length }}</span></div>
+          <div class="table-wrap" *ngIf="s.history.length; else noHistory">
+            <table>
+              <thead><tr><th>Pedido</th><th>Cliente</th><th>Servicio</th><th>Productos</th><th>Espera</th><th>SLA</th><th>Resultado</th></tr></thead>
+              <tbody>
+                <tr *ngFor="let order of s.history; trackBy: trackById">
+                  <td><strong>#{{ order.id }}</strong></td>
+                  <td>{{ order.clientName }}</td>
+                  <td>{{ serviceName(order.level) }}</td>
+                  <td>{{ order.lines.length }} linea(s) · {{ order.units }} unidades</td>
+                  <td>{{ seconds(order.waitMs) }}</td>
+                  <td><span class="badge" [class.danger-badge]="order.slaStatus === 'INCUMPLIDO'">{{ readable(order.slaStatus) }}</span></td>
+                  <td>{{ readable(order.state) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <ng-template #noHistory><p class="empty-state">Aun no hay pedidos finalizados.</p></ng-template>
+        </section>
+      </section>
+
+      <section class="view" *ngIf="tab === 'clientes'">
+        <div class="two-column">
+          <section class="panel form-panel">
+            <div class="panel-head"><div><span class="eyebrow">Nueva cuenta</span><h3>Registrar cliente</h3></div></div>
+            <label class="field"><span>Nombre</span><input type="text" minlength="2" maxlength="100" [(ngModel)]="clientName" name="clientName"></label>
+            <label class="field"><span>Correo</span><input type="email" maxlength="150" [(ngModel)]="clientEmail" name="clientEmail"></label>
+            <label class="field"><span>Servicio contratado</span><select [(ngModel)]="clientLevel" name="clientLevel"><option *ngFor="let service of services; let index = index" [ngValue]="index + 1">Nivel {{ index + 1 }} · {{ service }}</option></select></label>
+            <button type="button" class="button primary full" [disabled]="blocked || clientName.trim().length < 2 || !clientEmail" (click)="registerClient()">Registrar cliente</button>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head"><div><span class="eyebrow">Niveles de servicio</span><h3>Objetivos de espera</h3></div></div>
+            <div class="service-levels">
+              <div><strong>1</strong><span>Expres</span><small>Casi inmediato</small></div>
+              <div><strong>2</strong><span>Prioritario</span><small>10 min</small></div>
+              <div><strong>3</strong><span>Estandar</span><small>30 min</small></div>
+              <div><strong>4</strong><span>Programado</span><small>60 min</small></div>
+              <div><strong>5</strong><span>Economico</span><small>120 min</small></div>
+            </div>
+          </section>
+        </div>
+
+        <section class="panel">
+          <div class="panel-head"><div><span class="eyebrow">Cuentas</span><h3>Clientes registrados</h3></div><span class="counter">{{ s.clients.length }}</span></div>
+          <div class="table-wrap" *ngIf="s.clients.length; else noClients">
+            <table>
+              <thead><tr><th>ID</th><th>Cliente</th><th>Correo</th><th>Servicio actual</th><th>Pedidos</th><th>Completados</th></tr></thead>
+              <tbody>
+                <tr *ngFor="let client of s.clients; trackBy: trackById">
+                  <td>#{{ client.id }}</td>
+                  <td><strong>{{ client.name }}</strong></td>
+                  <td>{{ client.email }}</td>
+                  <td>
+                    <select class="table-select" [ngModel]="client.level" (ngModelChange)="changeClientService(client, $event)" [disabled]="blocked">
+                      <option *ngFor="let service of services; let index = index" [ngValue]="index + 1">{{ index + 1 }} · {{ service }}</option>
+                    </select>
+                  </td>
+                  <td>{{ client.orders }}</td>
+                  <td>{{ client.completed }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <ng-template #noClients><p class="empty-state">Registra un cliente para comenzar a generar pedidos.</p></ng-template>
+        </section>
+      </section>
+
+      <section class="view" *ngIf="tab === 'recursos'">
+        <section class="panel intro-panel">
+          <div>
+            <span class="eyebrow">Semaforos reales</span>
+            <h3>Estado de recursos compartidos</h3>
+            <p>Cada unidad muestra disponibilidad y propietario actual. Los cambios llegan desde el backend sin recargar la pagina.</p>
+          </div>
+          <div class="summary-number"><strong>{{ percent(overallOccupancy) }}</strong><span>ocupacion media</span></div>
+        </section>
+
+        <div class="resource-grid">
+          <article class="resource-card" *ngFor="let resource of s.resources; trackBy: trackByKey">
+            <div class="resource-card-head">
+              <div><span>{{ resource.key }}</span><h3>{{ resource.name }}</h3></div>
+              <div class="resource-count">{{ resourceUsage(resource) }}</div>
+            </div>
+            <div class="bar"><span [style.width.%]="resource.occupancyPercent"></span></div>
+            <div class="slot-grid">
+              <div class="slot" *ngFor="let slot of resource.slots" [class.busy]="slot.state === 'EN_USO'">
+                <div class="row-between"><strong>#{{ slot.slot }}</strong><span class="slot-state">{{ readable(slot.state) }}</span></div>
+                <small>{{ slot.ownerLabel }}</small>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="view" *ngIf="tab === 'recepcion'">
+        <div class="two-column">
+          <section class="panel form-panel">
+            <div class="panel-head"><div><span class="eyebrow">Entrada manual</span><h3>Registrar mercaderia</h3></div></div>
+            <label class="field"><span>Producto</span><select [(ngModel)]="receiptProductId" name="receiptProduct"><option *ngFor="let product of s.products; trackBy: trackByProduct" [ngValue]="product.id">{{ product.name }} · {{ product.type }}</option></select></label>
+            <label class="field"><span>Unidades recibidas</span><input type="number" min="1" max="600" [(ngModel)]="receiptUnits" name="receiptUnits"></label>
+            <button type="button" class="button primary full" [disabled]="blocked" (click)="receiveStock()">Registrar llegada</button>
+          </section>
+
+          <section class="panel process-flow">
+            <div class="panel-head"><div><span class="eyebrow">Productor consumidor</span><h3>Coordinacion operativa</h3></div></div>
+            <div class="flow-step"><strong>01</strong><div><span>Recepcion</span><small>Escanea la llegada usando el recurso compartido.</small></div></div>
+            <div class="flow-line"></div>
+            <div class="flow-step"><strong>02</strong><div><span>Canal de mensajes</span><small>{{ s.channel.queued }} de {{ s.channel.capacity }} mensajes en memoria.</small></div></div>
+            <div class="flow-line"></div>
+            <div class="flow-step"><strong>03</strong><div><span>Inventario</span><small>Actualiza stock y asigna ubicaciones de forma independiente.</small></div></div>
+          </section>
+        </div>
+
+        <section class="panel">
+          <div class="panel-head"><div><span class="eyebrow">Eventos</span><h3>Recepciones de mercaderia</h3></div><span class="counter">{{ s.receipts.length }}</span></div>
+          <div class="table-wrap" *ngIf="s.receipts.length; else noReceipts">
+            <table>
+              <thead><tr><th>ID</th><th>Producto</th><th>Unidades</th><th>Estado</th><th>Detalle</th><th>Lote</th></tr></thead>
+              <tbody>
+                <tr *ngFor="let receipt of s.receipts.slice().reverse()">
+                  <td>#{{ receipt.id }}</td><td>{{ receipt.product }}</td><td>{{ receipt.units }}</td><td><span class="badge">{{ readable(receipt.state) }}</span></td><td>{{ receipt.reason }}</td><td>{{ receipt.lotId ? '#' + receipt.lotId : 'Pendiente' }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <ng-template #noReceipts><p class="empty-state">No existen recepciones registradas.</p></ng-template>
+        </section>
+      </section>
+
+      <section class="view" *ngIf="tab === 'inventario'">
+        <div class="metric-grid four">
+          <article class="metric-card"><span>Capacidad</span><strong>{{ s.warehouse.capacity }}</strong><small>unidades fisicas</small></article>
+          <article class="metric-card"><span>Ocupadas</span><strong>{{ s.warehouse.occupied }}</strong><small>{{ percent(warehousePercent) }}</small></article>
+          <article class="metric-card"><span>Libres</span><strong>{{ s.warehouse.free }}</strong><small>espacios disponibles</small></article>
+          <article class="metric-card"><span>Backlog recepcion</span><strong>{{ s.channel.durableBacklog }}</strong><small>eventos pendientes</small></article>
+        </div>
+
+        <section class="panel">
+          <div class="panel-head"><div><span class="eyebrow">Existencias</span><h3>Inventario por producto</h3></div></div>
+          <div class="inventory-grid">
+            <article class="stock-card" *ngFor="let stock of s.warehouse.stocks">
+              <div class="row-between"><span class="badge">{{ stock.type }}</span><strong>#{{ stock.productId }}</strong></div>
+              <h3>{{ stock.name }}</h3>
+              <div class="stock-values">
+                <div><span>Fisico</span><strong>{{ stock.stock }}</strong></div>
+                <div><span>Reservado</span><strong>{{ stock.reserved }}</strong></div>
+                <div><span>Disponible</span><strong>{{ stock.available }}</strong></div>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head"><div><span class="eyebrow">Catalogo</span><h3>Tipos de mercaderia y recursos</h3></div></div>
+          <div class="type-grid">
+            <article *ngFor="let type of s.types">
+              <span class="badge primary">{{ type.name }}</span>
+              <p>{{ type.description }}</p>
+              <small>Recursos: {{ type.needs.join(', ') }}</small>
+            </article>
+          </div>
+        </section>
+      </section>
+
+      <section class="view" *ngIf="tab === 'almacen'">
+        <section class="panel intro-panel">
+          <div>
+            <span class="eyebrow">Asignacion no contigua</span>
+            <h3>Mapa fisico del almacen</h3>
+            <p>6 pasillos, 2 niveles y 5 ubicaciones por nivel. Cada celda soporta hasta 10 unidades.</p>
+          </div>
+          <div class="warehouse-ring" [style.background]="'conic-gradient(#5b72e5 ' + warehousePercent + '%, #edf1f7 0)'"><strong>{{ percent(warehousePercent) }}</strong><span>ocupado</span></div>
+        </section>
+
+        <section class="panel">
+          <div class="warehouse-grid">
+            <button type="button" class="warehouse-cell" *ngFor="let cell of s.warehouse.cells" [class.used]="cell.used > 0" [class.selected]="selectedCellId === cell.id" (click)="selectedCellId = cell.id">
+              <strong>{{ cell.label }}</strong>
+              <span>{{ cell.used }} / {{ cell.capacity }}</span>
+              <div class="mini-fill"><span [style.width.%]="cell.used * 100 / cell.capacity"></span></div>
+            </button>
+          </div>
+        </section>
+
+        <section class="panel" *ngIf="selectedCell as cell">
+          <div class="panel-head"><div><span class="eyebrow">Detalle de ubicacion</span><h3>{{ cell.label }}</h3></div><span class="badge">{{ cell.used }} / {{ cell.capacity }} unidades</span></div>
+          <div class="cell-detail" *ngIf="cell.contents.length; else emptyCell">
+            <article *ngFor="let content of cell.contents">
+              <strong>Lote #{{ content.lotId }}</strong>
+              <span>{{ productName(content.productId) }}</span>
+              <small>{{ content.units }} unidades · {{ content.reserved }} reservadas</small>
+            </article>
+          </div>
+          <ng-template #emptyCell><p class="empty-state">Ubicacion disponible.</p></ng-template>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head"><div><span class="eyebrow">Trazabilidad</span><h3>Lotes almacenados</h3></div><span class="counter">{{ s.warehouse.lots.length }}</span></div>
+          <div class="table-wrap" *ngIf="s.warehouse.lots.length; else noLots">
+            <table>
+              <thead><tr><th>Lote</th><th>Recepcion</th><th>Producto</th><th>Recibidas</th><th>Ubicaciones actuales</th></tr></thead>
+              <tbody>
+                <tr *ngFor="let lot of s.warehouse.lots.slice().reverse()">
+                  <td>#{{ lot.id }}</td><td>#{{ lot.receiptId }}</td><td>{{ productName(lot.productId) }}</td><td>{{ lot.receivedUnits }}</td>
+                  <td>{{ lot.locations.length ? lot.locations.length + ' ubicacion(es)' : 'Despachado por completo' }}<small *ngIf="lot.locations.length">{{ lot.locations[0].label }}{{ lot.locations.length > 1 ? ' y otras' : '' }}</small></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <ng-template #noLots><p class="empty-state">Aun no existen lotes en el almacen.</p></ng-template>
+        </section>
+      </section>
+
+      <section class="view" *ngIf="tab === 'conflicto'">
+        <section class="deadlock-hero" [class.detected]="s.conflict.state === 'INTERBLOQUEO'">
+          <div>
+            <span class="eyebrow light">Conflicto de recursos</span>
+            <h2>{{ s.conflict.state === 'INTERBLOQUEO' ? 'Interbloqueo detectado' : readable(s.conflict.state) }}</h2>
+            <p>Dos hilos adquieren el escaner y el control de despacho en orden inverso para demostrar el conflicto real.</p>
+          </div>
+          <div class="deadlock-status">{{ readable(s.conflict.state) }}</div>
+        </section>
+
+        <div class="two-column">
+          <section class="panel form-panel">
+            <div class="panel-head"><div><span class="eyebrow">Demostracion controlada</span><h3>Provocar conflicto</h3></div></div>
+            <label class="field"><span>Cliente</span><select [(ngModel)]="selectedClientId" name="conflictClient"><option *ngFor="let client of s.clients; trackBy: trackById" [ngValue]="client.id">{{ client.name }} · {{ serviceName(client.level) }}</option></select></label>
+            <label class="field"><span>Producto</span><select [(ngModel)]="receiptProductId" name="conflictProduct"><option *ngFor="let product of s.products; trackBy: trackByProduct" [ngValue]="product.id">{{ product.name }}</option></select></label>
+            <label class="field"><span>Unidades por pedido</span><input type="number" min="1" max="300" [(ngModel)]="receiptUnits" name="conflictUnits"></label>
+            <div class="service-banner"><span>Stock requerido</span><strong>{{ receiptUnits * 2 }} unidades disponibles</strong></div>
+            <button type="button" class="button danger full" [disabled]="blocked || !selectedClientId || (s.conflict.state !== 'DISPONIBLE' && s.conflict.state !== 'RESUELTO')" (click)="startConflict()">Provocar interbloqueo</button>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head"><div><span class="eyebrow">Condicion circular</span><h3>Recursos disputados</h3></div></div>
+            <div class="deadlock-diagram">
+              <div class="deadlock-node"><strong>Pedido A</strong><span>Retiene ESCANER</span><small>Espera CONTROL_CONFLICTO</small></div>
+              <div class="deadlock-arrows"><span>A espera B</span><strong>↔</strong><span>B espera A</span></div>
+              <div class="deadlock-node"><strong>Pedido B</strong><span>Retiene CONTROL_CONFLICTO</span><small>Espera ESCANER</small></div>
+            </div>
+          </section>
+        </div>
+
+        <section class="panel" *ngIf="s.conflict.orders.length">
+          <div class="panel-head"><div><span class="eyebrow">Resolucion manual</span><h3>Selecciona quien continua</h3></div></div>
+          <div class="conflict-orders">
+            <article *ngFor="let order of s.conflict.orders; trackBy: trackById">
+              <div class="row-between"><strong>Pedido #{{ order.id }}</strong><span class="badge">{{ serviceName(order.level) }}</span></div>
+              <p>{{ order.reason }}</p>
+              <small>Recursos retenidos: {{ order.heldResources.length ? order.heldResources.join(', ') : 'Preparando' }}</small>
+              <button type="button" class="button primary full" [disabled]="blocked || s.conflict.state !== 'INTERBLOQUEO'" (click)="resolveConflict(order.id)">Continuar pedido #{{ order.id }}</button>
+            </article>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head"><div><span class="eyebrow">Bitacora</span><h3>Eventos del conflicto</h3></div></div>
+          <div class="timeline" *ngIf="s.conflict.events.length; else noConflictEvents">
+            <div *ngFor="let event of s.conflict.events; let index = index"><span>{{ index + 1 }}</span><p>{{ event }}</p></div>
+          </div>
+          <ng-template #noConflictEvents><p class="empty-state">Aun no se ha provocado un escenario de interbloqueo.</p></ng-template>
+        </section>
+      </section>
+
+      <section class="view" *ngIf="tab === 'politicas'">
+        <section class="panel intro-panel">
+          <div><span class="eyebrow">Planificacion</span><h3>Politica activa: {{ readable(s.policy) }}</h3><p>La cola se reordena con la politica seleccionada. El criterio aplicado siempre permanece visible.</p></div>
+          <div class="summary-number"><strong>{{ s.waitingCount }}</strong><span>pedidos esperando</span></div>
+        </section>
+
+        <div class="policy-grid">
+          <button type="button" [class.selected]="s.policy === 'PRIORIDAD'" (click)="changePolicy('PRIORIDAD')" [disabled]="blocked"><strong>Prioridad estricta</strong><span>Atiende primero el menor nivel de servicio.</span></button>
+          <button type="button" [class.selected]="s.policy === 'FIFO'" (click)="changePolicy('FIFO')" [disabled]="blocked"><strong>FIFO</strong><span>Respeta el orden de llegada de los pedidos.</span></button>
+          <button type="button" [class.selected]="s.policy === 'UNIDADES'" (click)="changePolicy('UNIDADES')" [disabled]="blocked"><strong>Menor cantidad</strong><span>Prioriza pedidos con menos unidades.</span></button>
+          <button type="button" [class.selected]="s.policy === 'ENVEJECIMIENTO'" (click)="changePolicy('ENVEJECIMIENTO')" [disabled]="blocked"><strong>Envejecimiento</strong><span>Eleva la prioridad de pedidos que acumulan espera.</span></button>
+        </div>
+
+        <div class="two-column">
+          <section class="panel form-panel">
+            <div class="panel-head"><div><span class="eyebrow">Aging</span><h3>Intervalo de envejecimiento</h3></div></div>
+            <label class="field"><span>Segundos reales por ascenso</span><input type="number" min="1" max="3600" [(ngModel)]="agingSeconds" name="agingSeconds"></label>
+            <button type="button" class="button primary full" [disabled]="blocked" (click)="applyAging()">Aplicar intervalo</button>
+          </section>
+          <section class="panel form-panel">
+            <div class="panel-head"><div><span class="eyebrow">SLA</span><h3>Escala del reloj simulado</h3></div></div>
+            <label class="field"><span>Segundos simulados por segundo real</span><input type="number" min="1" max="3600" [(ngModel)]="clockRate" name="clockRate"></label>
+            <button type="button" class="button primary full" [disabled]="blocked" (click)="applyClock()">Aplicar escala</button>
+          </section>
+        </div>
+
+        <section class="panel">
+          <div class="panel-head"><div><span class="eyebrow">Cumplimiento</span><h3>Metricas por nivel de servicio</h3></div></div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Nivel</th><th>Servicio</th><th>Limite</th><th>Medidos</th><th>Completados</th><th>Cumplidos</th><th>Incumplidos</th><th>Pendientes vencidos</th><th>Espera media</th></tr></thead>
+              <tbody>
+                <tr *ngFor="let metric of s.serviceMetrics; trackBy: trackByMetric">
+                  <td>{{ metric.level }}</td><td>{{ serviceName(metric.level) }}</td><td>{{ metric.limitMinutes }} min</td><td>{{ metric.measured }}</td><td>{{ metric.completed }}</td><td>{{ metric.met }}</td><td>{{ metric.missed }}</td><td>{{ metric.overduePending }}</td><td>{{ metric.averageWaitMinutes.toFixed(2) }} min</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+      <section class="view" *ngIf="tab === 'comparacion'">
+        <div class="two-column">
+          <section class="panel form-panel">
+            <div class="panel-head"><div><span class="eyebrow">Experimento reproducible</span><h3>Comparar politicas</h3></div></div>
+            <label class="field"><span>Semilla</span><input type="number" [(ngModel)]="comparisonSeed" name="comparisonSeed"></label>
+            <label class="field"><span>Cantidad de pedidos</span><input type="number" min="10" max="100" [(ngModel)]="comparisonCount" name="comparisonCount"></label>
+            <button type="button" class="button primary full" [disabled]="blocked" (click)="runComparison()">Ejecutar comparacion</button>
+          </section>
+          <section class="panel">
+            <div class="panel-head"><div><span class="eyebrow">Condiciones identicas</span><h3>Modelo de eventos discretos</h3></div></div>
+            <p>Las cuatro politicas reciben la misma secuencia de pedidos y las mismas capacidades. El experimento no modifica la operacion real.</p>
+            <div class="stack-list"><div class="stack-row"><span>Semilla propuesta</span><strong>201930761</strong></div><div class="stack-row"><span>Reloj actual</span><strong>x{{ s.clockRate }}</strong></div><div class="stack-row"><span>Aging actual</span><strong>{{ s.agingSeconds }} s</strong></div></div>
+          </section>
+        </div>
+
+        <section class="panel" *ngIf="comparisonResults.length; else noComparison">
+          <div class="panel-head"><div><span class="eyebrow">Resultados</span><h3>Comparacion de politicas</h3></div><span class="badge">Semilla {{ s.comparison.seed }}</span></div>
+          <div class="comparison-grid">
+            <article *ngFor="let result of comparisonResults">
+              <span class="eyebrow">{{ readable(result.policy) }}</span>
+              <strong>{{ result.averageWaitMinutes.toFixed(2) }} min</strong>
+              <small>Espera media</small>
+              <div class="comparison-values"><span>Maxima <b>{{ result.maxWaitMinutes.toFixed(2) }}</b></span><span>Incumplidos <b>{{ result.missed }}</b></span><span>Completados <b>{{ result.completed }}</b></span></div>
+            </article>
+          </div>
+
+          <label class="field inline-field"><span>Detalle de politica</span><select [(ngModel)]="comparisonPolicy" name="comparisonPolicy"><option *ngFor="let result of comparisonResults" [value]="result.policy">{{ readable(result.policy) }}</option></select></label>
+
+          <div *ngIf="comparisonResult as result" class="comparison-detail">
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Servicio</th><th>Pedidos</th><th>Cumplidos</th><th>Incumplidos</th><th>Espera media</th></tr></thead>
+                <tbody><tr *ngFor="let service of result.services"><td>{{ serviceName(service['level']) }}</td><td>{{ service['count'] }}</td><td>{{ service['met'] }}</td><td>{{ service['missed'] }}</td><td>{{ service['averageWaitMinutes'].toFixed(2) }} min</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+        <ng-template #noComparison><section class="panel"><p class="empty-state">Ejecuta una comparacion para generar resultados con la carga configurada.</p></section></ng-template>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <span>REDXela 1.0 · Carnet 201930761</span>
+      <span>{{ s.persistence }} · {{ s.recovered ? 'Corrida recuperada' : 'Corrida nueva' }}</span>
+    </footer>
+  </div>
+
+  <div class="overlay" *ngIf="menuOpen" (click)="menuOpen = false"></div>
+</div>
+
+<ng-template #loadingTemplate>
+  <div class="loading-screen">
+    <div class="loading-card">
+      <div class="brand-mark large">RX</div>
+      <h1>REDXela</h1>
+      <p>Conectando con el motor de simulacion...</p>
+      <div class="loading-line"><span></span></div>
+    </div>
+  </div>
+</ng-template>
